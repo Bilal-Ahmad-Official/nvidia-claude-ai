@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-main: #faf9f5;
+  --bg-sidebar: #f0eee6;
+  --surface: #ffffff;
+  --hover: #e8e5db;
+  --active: #ddd9cb;
+  --border: #e3e0d5;
+  --text: #1a1915;
+  --muted: #83817a;
+  --accent: #d97757;
+  --accent-hover: #c4633f;
+  --bubble-user: #f0eee6;
+  --code-bg: #f6f4ee;
+  --inline-code-bg: #f0e5dc;
+  --inline-code-text: #a15c3b;
+}
+
+.dark {
+  --bg-main: #1b1a17;
+  --bg-sidebar: #161514;
+  --surface: #262522;
+  --hover: #302e2b;
+  --active: #3a3833;
+  --border: #35332f;
+  --text: #ece9e2;
+  --muted: #9b9992;
+  --accent: #d97757;
+  --accent-hover: #c4633f;
+  --bubble-user: #2e2c29;
+  --code-bg: #141311;
+  --inline-code-bg: #35332f;
+  --inline-code-text: #f0b39a;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--active);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.hljs {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.streaming-cursor {
+  display: inline-block;
+  color: var(--accent);
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.25s ease both;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-pop {
+  animation: pop 0.12s ease-out both;
+  transform-origin: top right;
+}
+
+.stream-scroll {
+  overflow-anchor: none;
+}
