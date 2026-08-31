@@ -70,6 +70,29 @@ function sanitizeContent(c: unknown): string | ContentPart[] {
     );
 }
 
+/** ✅ NEW: Map upstream HTTP status codes to friendly, human-readable messages */
+function friendlyError(status: number): string {
+  switch (status) {
+    case 400:
+      return "Bad request — the model rejected the input.";
+    case 401:
+    case 403:
+      return "API key invalid or unauthorized. Check your NVIDIA_API_KEY.";
+    case 402:
+      return "NVIDIA trial credits exhausted. Check your balance at build.nvidia.com.";
+    case 404:
+      return "Model not found — the model name may be wrong or deprecated.";
+    case 429:
+      return "Rate limit reached — wait a few seconds and try again.";
+    case 500:
+    case 502:
+    case 503:
+      return "NVIDIA service is temporarily unavailable. Please try again shortly.";
+    default:
+      return `Upstream error (HTTP ${status}).`;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { messages, model, deepThink } = await req.json();
@@ -110,6 +133,36 @@ export async function POST(req: Request) {
     const upstream = await streamNimChat(nimMessages, chosenModel, {
       deepThink: wantsThink,
     });
+
+    // ✅ FIX 1: Surface upstream HTTP errors instead of silently streaming nothing
+    if (!upstream.ok) {
+      const errText = await upstream.text().catch(() => "");
+      console.error(
+        `[NIM] upstream error ${upstream.status}:`,
+        errText || "(no body)"
+      );
+
+      let detail = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        detail = parsed?.detail ?? parsed?.message ?? errText;
+      } catch {
+        // body wasn't JSON — keep raw text
+      }
+
+      return Response.json(
+        { error: friendlyError(upstream.status), detail },
+        { status: upstream.status }
+      );
+    }
+
+    // ✅ FIX 2: Guard against a missing response body
+    if (!upstream.body) {
+      return Response.json(
+        { error: "Upstream returned an empty response body." },
+        { status: 502 }
+      );
+    }
 
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
@@ -155,7 +208,9 @@ export async function POST(req: Request) {
 
           const rest = stripper ? stripper.flush() : "";
           if (rest) controller.enqueue(encoder.encode(rest));
-        } catch {
+        } catch (streamErr) {
+          // ✅ FIX 3: Log stream errors so failures are visible in your terminal
+          console.error("[NIM] stream read error:", streamErr);
           controller.enqueue(encoder.encode("\n\n⚠️ [stream interrupted]"));
         } finally {
           controller.close();
@@ -171,6 +226,8 @@ export async function POST(req: Request) {
       },
     });
   } catch (err) {
+    // ✅ FIX 4: Log route-level errors too
+    console.error("[NIM] route error:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     return Response.json({ error: message }, { status: 500 });
   }
