@@ -7,6 +7,9 @@ export const dynamic = "force-dynamic";
 const OPEN_TAG = "<think>";
 const CLOSE_TAG = "</think>";
 
+// Add your vision model string here (or import VISION_MODEL from "@/lib/constants")
+const VISION_MODEL = "meta/llama-3.2-11b-vision-instruct";
+
 /** Removes <think>…</think> blocks from a token stream (handles chunk splits) */
 class ThinkStripper {
   private buffer = "";
@@ -36,6 +39,7 @@ class ThinkStripper {
           this.insideThink = false;
         } else {
           const hold = Math.min(CLOSE_TAG.length - 1, this.buffer.length);
+          out += this.buffer.slice(0, this.buffer.length - hold);
           this.buffer = this.buffer.slice(this.buffer.length - hold);
           break;
         }
