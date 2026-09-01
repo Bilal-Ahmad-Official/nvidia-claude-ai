@@ -24,16 +24,38 @@ interface StreamOptions {
 const BASE_URL =
   process.env.NVIDIA_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
 
-async function callNim(apiKey: string, body: Record<string, unknown>) {
-  return fetch(`${BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+// Max wait for NVIDIA to respond with headers. Once headers arrive,
+// the stream itself can run as long as it needs (no mid-generation kill).
+const REQUEST_TIMEOUT_MS = 60_000;
+
+async function callNim(apiKey: string, body: Record<string, unknown>): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return res;
+  } catch (err) {
+    // Translate cryptic abort errors into something readable
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        `NVIDIA did not respond within ${REQUEST_TIMEOUT_MS / 1000}s (connection timeout).`
+      );
+    }
+    throw err;
+  } finally {
+    // Stop the timer once headers arrive so long generations are never cut off
+    clearTimeout(timer);
+  }
 }
 
 export async function streamNimChat(
@@ -64,24 +86,21 @@ export async function streamNimChat(
 
     let res = await callNim(apiKey, body);
 
-    if (!res.ok) {
+    // ✅ Only fall back when the kwarg itself is the problem (400/422).
+    // Other errors (429/504…) must propagate so route.ts can retry.
+    if (res.status === 400 || res.status === 422) {
       const { chat_template_kwargs, ...fallback } = body;
       res = await callNim(apiKey, fallback);
     }
 
-    if (!res.ok || !res.body) {
-      const detail = await res.text();
-      throw new Error(`NIM API error ${res.status}: ${detail}`);
-    }
+    // ✅ CHANGED: return as-is (even on error) — route.ts checks
+    // res.ok and runs the retry logic for temporary failures.
     return res;
   }
 
   const res = await callNim(apiKey, body);
 
-  if (!res.ok || !res.body) {
-    const detail = await res.text();
-    throw new Error(`NIM API error ${res.status}: ${detail}`);
-  }
-
+  // ✅ CHANGED: no more throw on !res.ok. Returning the Response lets
+  // route.ts retry 504/503/429 and show friendly error messages.
   return res;
 }
